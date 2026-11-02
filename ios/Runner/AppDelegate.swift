@@ -69,7 +69,7 @@ import UserNotifications
 
       case "cancelBgTask":
         // 撤回已提交的后台同步任务（关闭后台同步时由 Dart 侧调用，UP-5）。
-        BGTaskScheduler.shared.cancel(taskWithIdentifier: "com.example.img_syncer.background-sync")
+        BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: "com.example.img_syncer.background-sync")
         result(true)
 
       case "requestAuthorization":
