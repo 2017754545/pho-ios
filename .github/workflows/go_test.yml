@@ -1,0 +1,25 @@
+name: golang test
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+jobs:
+  go-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Go 版本与 go.mod 一致（go 1.25.0，toolchain go1.25.4）：
+      # go-version-file 让 setup-go 直接读 go.mod，避免手写版本漂移。
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build go binary
+        run: make server
+
+      - name: Run tests
+        # Go 集成测试（Docker 套件）；Dart 套件见 make test-flutter。
+        run: make test-go

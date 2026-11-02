@@ -1,0 +1,85 @@
+# 用途：用户自用、未签名 IPA 云端编译（用户用个人证书自行侧载）。
+# 产物为 pho-ios-unsigned.ipa（Payload/Runner.app 打包），见最后一步。
+# 仅手动触发（workflow_dispatch）。不做签名、provisioning、App Store 步骤。
+# 步骤依据：Makefile 的 server-ios / prebuild / protobuf 目标、
+# CHANGES-iOS.md 第八节 macOS 构建步骤、本地已验证的
+# Flutter 3.47.9 / Go 1.25（go.mod: go 1.25.0, toolchain go1.25.4）。
+# 注意：
+# 1. gomobile 按 go.mod 锁定的 x/mobile 伪版本固定安装（见下），不用 @latest。
+# 2. `flutter build ios --no-codesign` 仅 macOS 可用；未签名 .app 手工
+#    打 IPA 包后，用户个人证书签名侧载流程未经真机验证。
+# 3. Dart golden 像素比对仅在 Linux 生效（theme_consistency_test
+#    Part 4 头注），macOS 上只做结构断言，不会因字体回退误报。
+name: ios unsigned build
+
+on:
+  workflow_dispatch:
+
+jobs:
+  ios-unsigned:
+    runs-on: macos-14
+    timeout-minutes: 60
+    steps:
+      # fetch-depth 0：Makefile 用 git describe --tags 取 BUILD_VERSION，
+      # 浅克隆拿不到 tag 会导致版本号为空。
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+
+      - name: Install protoc
+        run: brew install protobuf
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: "3.47.9"
+
+      - name: Install codegen tools (Makefile prebuild)
+        run: |
+          make prebuild
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.pub-cache/bin" >> "$GITHUB_PATH"
+
+      - name: Install gomobile
+        # 与 go.mod 锁定的 golang.org/x/mobile 版本一致：
+        # v0.0.0-20260709172247-6129f5bee9d5（go.mod 要求块）。
+        run: |
+          go install golang.org/x/mobile/cmd/gomobile@v0.0.0-20260709172247-6129f5bee9d5
+          gomobile init
+
+      - name: Build Go server xcframework (make server-ios)
+        run: |
+          make server-ios
+          test -d ios/Frameworks/RUN.xcframework
+
+      - name: Flutter pub get
+        run: flutter pub get
+
+      # 静态检查与 Dart 测试先于编包：失败时不浪费编包时间。
+      # 注意：Docker 集成套件（make test）不在此跑。
+      - name: Flutter analyze
+        run: flutter analyze
+
+      - name: Flutter test
+        run: flutter test
+
+      - name: Build unsigned iOS app
+        run: flutter build ios --release --no-codesign
+
+      - name: Package unsigned IPA
+        run: |
+          test -d build/ios/iphoneos/Runner.app
+          rm -rf Payload pho-ios-unsigned.ipa
+          mkdir Payload
+          cp -R build/ios/iphoneos/Runner.app Payload/
+          zip -r -y pho-ios-unsigned.ipa Payload
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pho-ios-unsigned-ipa
+          path: pho-ios-unsigned.ipa
+          retention-days: 30
