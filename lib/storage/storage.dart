@@ -29,6 +29,15 @@ String encryptionTypeName(EncryptionType type) {
 
 RemoteStorage storage = RemoteStorage("127.0.0.1", 10000);
 
+/// 手动上传的目标目录头：仅手动上传发送（Image-Dest-Dir），自动
+/// 同步不发送。空值不产生头，服务端按默认日期目录布局处理。
+/// 三个上传请求（缩略图/原件/Live 视频）必须带同一个头，文件
+/// 才落在同一个 dest/type 目录下。
+Map<String, String> destDirHeaders(String? destDir) =>
+    destDir == null || destDir.isEmpty
+        ? const {}
+        : {'Image-Dest-Dir': destDir};
+
 /// 用 pathSegments 构造指向本地 Go server 的 HTTP URL：文件名按段编码，
 /// 含空格 / `#` / `?` 的标题也不会被 Uri.parse 截断（`#` 后成 fragment、
 /// `?` 后成 query）或拼成非法 URL。调用方传原始段，不预编码。
@@ -108,7 +117,26 @@ class RemoteStorage implements RemoteStorageClient {
     httpClient.close();
   }
 
+  /// 接口方法：不带目标目录（自动同步路径，不发送
+  /// Image-Dest-Dir 头，走默认日期目录布局）。接口签名保持不动，
+  /// 以免破坏 RemoteStorageClient 的 mock 生成文件与测试 fake；
+  /// 手动上传走 [uploadAssetEntityToDest]。
   Future<void> uploadAssetEntity(AssetEntity asset) async {
+    await _uploadAssetEntity(asset, null);
+  }
+
+  /// 手动上传：与 [uploadAssetEntity] 相同，但三个子请求都带
+  /// Image-Dest-Dir 头，文件落到 [destDir]/video|image/ 下（见
+  /// uploadAssetEntity 的 destDir 参数说明，现为内部实现）。
+  Future<void> uploadAssetEntityToDest(
+      AssetEntity asset, String destDir) async {
+    await _uploadAssetEntity(asset, destDir);
+  }
+
+  /// [destDir]：手动上传的目标子目录（相对于驱动根目录，已由
+  /// 调用方归一化，如 "manual"）；为 null 时不发送 Image-Dest-Dir
+  /// 头，走默认日期目录布局（自动同步路径）。三个子请求共用它。
+  Future<void> _uploadAssetEntity(AssetEntity asset, String? destDir) async {
     await checkServer();
     // 单次上传内快照 base URL：checkServer 可能在并发上传间重启 server
     // 并切换 httpBaseUrl，同一张照片的缩略图/原件/live 视频必须发往
@@ -169,6 +197,7 @@ class RemoteStorage implements RemoteStorageClient {
               'Image-Encrypt-Password': settingModel.enableEncrypt
                   ? settingModel.encryptionPassword
                   : "",
+              ...destDirHeaders(destDir),
             },
           );
           stateModel.updateUploadProgress(
@@ -186,6 +215,7 @@ class RemoteStorage implements RemoteStorageClient {
         var req = http.StreamedRequest(
             "POST", storageHttpUri([name], baseUrl: uploadBaseUrl));
         req.headers['Image-Date'] = dateStr;
+        req.headers.addAll(destDirHeaders(destDir));
         req.headers['Image-Is-Live-Photo'] =
             asset.isLivePhoto ? "true" : "false";
         if (settingModel.enableEncrypt) {
@@ -219,6 +249,7 @@ class RemoteStorage implements RemoteStorageClient {
               storageHttpUri(['live', videoName],
                   baseUrl: uploadBaseUrl));
           req.headers['Image-Date'] = dateStr;
+          req.headers.addAll(destDirHeaders(destDir));
           req.headers['Image-Is-Live-Photo'] =
               asset.isLivePhoto ? "true" : "false";
           if (settingModel.enableEncrypt) {

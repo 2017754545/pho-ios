@@ -368,4 +368,38 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get noCameraPhotos => '这个相册里没有相机照片';
+
+  @override
+  String get manualUploadFolder => '手动上传目录';
+
+  @override
+  String get manualUploadFolderDesc =>
+      '手动上传的文件存到驱动根目录下的这个目录里，按 video/ 和 image/ 分类型存放（不按日期分子目录）。自动同步仍用驱动根目录加日期目录。留空则使用默认目录“manual”。改目录不会移动已上传的文件。';
+
+  @override
+  String get manualUploadFolderHint => '例如 manual';
+
+  @override
+  String get manualUploadFolderBrowse => '浏览';
+
+  @override
+  String get manualUploadFolderEmpty => '目录为空，将使用默认目录“manual”。';
+
+  @override
+  String get manualUploadFolderInvalid =>
+      '目录无效：请填写相对于驱动根目录的路径，不要含“..”、前导斜杠或反斜杠。';
+
+  @override
+  String get manualUploadFolderNotSet => '请先设置远程存储，再选择手动上传目录。';
+
+  @override
+  String get manualUploadFolderPickerTitle => '选择手动上传目录';
+
+  @override
+  String manualUploadFolderCurrent(Object folder) {
+    return '当前：$folder';
+  }
+
+  @override
+  String get manualUploadFolderRoot => '驱动根目录';
 }

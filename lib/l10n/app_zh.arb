@@ -117,5 +117,15 @@
   "filterExtensionsHint": "用逗号分隔，如 gif, heic；留空表示不排除任何扩展名",
   "filterExtensionsDesc": "扩展名不区分大小写；列表中的扩展名会被排除，未列出的默认允许。",
   "onlyCameraDesc": "只在相册里显示相机拍摄的照片，截图相册会被隐藏。微信、WhatsApp 等保存到“最近项目”的图片无法与相机照片区分，仍会显示。不影响同步。",
-  "noCameraPhotos": "这个相册里没有相机照片"
+  "noCameraPhotos": "这个相册里没有相机照片",
+  "manualUploadFolder": "手动上传目录",
+  "manualUploadFolderDesc": "手动上传的文件存到驱动根目录下的这个目录里，按 video/ 和 image/ 分类型存放（不按日期分子目录）。自动同步仍用驱动根目录加日期目录。留空则使用默认目录“manual”。改目录不会移动已上传的文件。",
+  "manualUploadFolderHint": "例如 manual",
+  "manualUploadFolderBrowse": "浏览",
+  "manualUploadFolderEmpty": "目录为空，将使用默认目录“manual”。",
+  "manualUploadFolderInvalid": "目录无效：请填写相对于驱动根目录的路径，不要含“..”、前导斜杠或反斜杠。",
+  "manualUploadFolderNotSet": "请先设置远程存储，再选择手动上传目录。",
+  "manualUploadFolderPickerTitle": "选择手动上传目录",
+  "manualUploadFolderCurrent": "当前：{folder}",
+  "manualUploadFolderRoot": "驱动根目录"
 }

@@ -9,6 +9,7 @@ import 'package:img_syncer/util.dart';
 import 'event_bus.dart';
 import 'package:img_syncer/asset.dart';
 import 'package:img_syncer/camera_album_classifier.dart';
+import 'package:img_syncer/sync/manual_upload_folder.dart';
 import 'package:img_syncer/sync/upload_filter.dart';
 import 'dart:async';
 import 'package:photo_manager/photo_manager.dart';
@@ -241,6 +242,28 @@ class SettingModel extends ChangeNotifier {
     uploadFilter = normalized;
     notifyListeners();
   }
+
+  /// 手动上传目录原始值（相对于驱动根目录，如 "manual"；空串 =
+  /// 未设置）。仅 iOS 加载（global.dart 的 Platform.isIOS 门控，
+  /// 与筛选/并行数一致）。实际生效值见 [manualUploadDestDir]：
+  /// 未设置或非法时用默认 `manual`，手动上传与自动同步永不混进
+  /// 同一个文件夹。改目录不移动已上传的文件（服务端只按新目录
+  /// 发现旧目录文件，不重传——见 RangeByDate 相册遍历）。
+  String manualUploadFolder = '';
+
+  bool setManualUploadFolder(String value) {
+    if (manualUploadFolder == value) return false;
+    manualUploadFolder = value;
+    notifyListeners();
+    return true;
+  }
+
+  /// 手动上传实际生效的目标子目录：已存值的归一化结果，未设置
+  /// 或非法时为默认 `manual`。手动上传调用点（gallery 两处）传
+  /// 给 uploadAssetEntity；自动同步不传（不带 Image-Dest-Dir 头）。
+  String get manualUploadDestDir =>
+      normalizeManualUploadFolder(manualUploadFolder) ??
+      defaultManualUploadFolder;
 
   /// 仅相机相册（仅 iOS 展示层开关）：只显示相机拍摄的照片。
   /// 不影响同步选择（同步始终用 shouldSyncAsset），不改 localFolder

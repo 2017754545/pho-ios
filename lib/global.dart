@@ -4,6 +4,7 @@ import 'package:img_syncer/run_server.dart';
 import 'package:img_syncer/sync_timer.dart';
 import 'package:img_syncer/state_model.dart';
 import 'package:img_syncer/storage/storage.dart';
+import 'package:img_syncer/sync/manual_upload_folder.dart';
 import 'package:img_syncer/sync/upload_filter.dart';
 import 'package:img_syncer/util.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -122,6 +123,11 @@ class Global {
           settingModel.setParallelUploadCount(parallelCountPref);
         }
         settingModel.setUploadFilter(await loadUploadFilterConfig());
+        final manualFolderPref =
+            prefs.getString(manualUploadFolderPrefsKey);
+        if (manualFolderPref != null) {
+          settingModel.setManualUploadFolder(manualFolderPref);
+        }
         final onlyCameraAlbumPref = prefs.getBool("only_camera_album");
         if (onlyCameraAlbumPref != null) {
           settingModel.setOnlyCameraAlbum(onlyCameraAlbumPref);

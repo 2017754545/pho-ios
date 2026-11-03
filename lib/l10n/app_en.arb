@@ -117,5 +117,15 @@
   "filterExtensionsHint": "Comma-separated, e.g. gif, heic; leave empty to exclude none",
   "filterExtensionsDesc": "Extensions are case-insensitive. Extensions in the list are excluded; unlisted extensions are allowed.",
   "onlyCameraDesc": "Only show camera photos in the gallery; screenshot albums are hidden. Photos saved to Recents by WeChat, WhatsApp and similar apps cannot be distinguished from camera photos and will still be shown. Sync is not affected.",
-  "noCameraPhotos": "No camera photos in this album"
+  "noCameraPhotos": "No camera photos in this album",
+  "manualUploadFolder": "Manual upload folder",
+  "manualUploadFolderDesc": "Manually uploaded files go to this folder under the drive root, sorted into video/ and image/ subfolders (not by date). Auto sync still uses the drive root with date folders. Leave empty to use the default folder \"manual\". Changing the folder does not move files already uploaded.",
+  "manualUploadFolderHint": "e.g. manual",
+  "manualUploadFolderBrowse": "Browse",
+  "manualUploadFolderEmpty": "Folder is empty; using the default folder \"manual\".",
+  "manualUploadFolderInvalid": "Invalid folder: use a path relative to the drive root, without \"..\", leading slash, or backslashes.",
+  "manualUploadFolderNotSet": "Set up remote storage first, then choose the manual upload folder.",
+  "manualUploadFolderPickerTitle": "Choose manual upload folder",
+  "manualUploadFolderCurrent": "Current: {folder}",
+  "manualUploadFolderRoot": "Drive root"
 }

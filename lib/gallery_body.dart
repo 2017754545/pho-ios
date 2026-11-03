@@ -551,7 +551,8 @@ class GalleryBodyState extends State<GalleryBody>
         continue;
       }
       try {
-        await storage.uploadAssetEntity(entity);
+        await storage.uploadAssetEntityToDest(
+            entity, settingModel.manualUploadDestDir);
         uploadedCount++;
       } catch (e) {
         SnackBarManager.showSnackBar("${l10n.uploadFailed}: $e");

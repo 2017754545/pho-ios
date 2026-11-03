@@ -381,4 +381,40 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get noCameraPhotos => 'No camera photos in this album';
+
+  @override
+  String get manualUploadFolder => 'Manual upload folder';
+
+  @override
+  String get manualUploadFolderDesc =>
+      'Manually uploaded files go to this folder under the drive root, sorted into video/ and image/ subfolders (not by date). Auto sync still uses the drive root with date folders. Leave empty to use the default folder \"manual\". Changing the folder does not move files already uploaded.';
+
+  @override
+  String get manualUploadFolderHint => 'e.g. manual';
+
+  @override
+  String get manualUploadFolderBrowse => 'Browse';
+
+  @override
+  String get manualUploadFolderEmpty =>
+      'Folder is empty; using the default folder \"manual\".';
+
+  @override
+  String get manualUploadFolderInvalid =>
+      'Invalid folder: use a path relative to the drive root, without \"..\", leading slash, or backslashes.';
+
+  @override
+  String get manualUploadFolderNotSet =>
+      'Set up remote storage first, then choose the manual upload folder.';
+
+  @override
+  String get manualUploadFolderPickerTitle => 'Choose manual upload folder';
+
+  @override
+  String manualUploadFolderCurrent(Object folder) {
+    return 'Current: $folder';
+  }
+
+  @override
+  String get manualUploadFolderRoot => 'Drive root';
 }

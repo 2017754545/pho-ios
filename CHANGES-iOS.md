@@ -540,3 +540,147 @@ Go：见第十一节行为变化段。测试：U1–U8 的期望按“生产设�
   `reloadAutoSyncTimer` 无 Wi-Fi 门（guard 在 per-tick，现状已锁定）；
   UP-15 凭证明文存储与传输现状（仅记录，不新增加密）。
 - 测试工具安装记录见第十一节（Docker/protoc/crane，均在用户目录）。
+
+---
+
+## 十二、手动上传分目录（2026-11-02，本地实现，未推送）
+
+手动上传与自动同步分目录存放：手动上传去设置里定一次的固定
+目录（其下按类型分 `video/`/`image/`，不按日期分子目录），自动
+同步继续用驱动根目录 + 日期目录。仅 iOS 入口；不改协议
+（proto 未动）、不加密、不改筛选/B1/B2 与既有 FK/UP/I 修复。
+
+### 行为
+
+- 设置：主设置页（远程存储行之后，仅 iOS）一行
+  “手动上传目录”，副标题显示当前生效目录；点进设置页
+  （`lib/manual_upload_folder_route.dart:18`）可手填或点浏览
+  打开文件夹选择器。留空 = 未设置，手动上传用默认子目录
+  `manual`（分离在未配置时也成立），文案已写明。
+- 布局（服务端）：`<dest>/video/<name>`（视频）、
+  `<dest>/image/<name>`（照片）；Live Photo 的照片进
+  `<dest>/image/<name>`，伴生视频进
+  `<dest>/image/live_<base>/<video-name>`——live_ 子目录留在
+  照片旁边、位于 image 目录内，绝不进 video/（`GetLiveVideoOffset`
+  按照片所在目录找伴生视频）。缩略图镜像为
+  `.thumbnail/<dest>/image/<name>`，与原件同布局。加密 `.aes`
+  后缀行为不变。自动同步不带目标头，布局不变。
+- 改手动目录不移动已上传的文件，也不重传：发现逻辑覆盖任意
+  一级相册目录（不限当前配置），旧目录下的文件仍被发现为
+  “已上传”（见“发现”一节与测试）。
+- 选择器只读浏览（只调目录列举 RPC），不创建任何目录；目录
+  在首次上传时由各 drive 的 `Upload` 经 `MkdirAll` 创建
+  （`server/drive/*` 既有行为，未改）。
+
+### 逐项改动
+
+- `server/imgmanager/imgmanager.go:163`：`Options` 新增
+  `DestDir` 字段；`:189` `WithDestDir` 选项；`:203`
+  `SanitizeDestDir`（与目录浏览/根路径相同的清理规则：拒
+  绝反斜杠、绝对路径、`..`/`.` 元素、空段、首段 `live` /
+  `.thumbnail`、首段日期目录形状；空串 = 未指定，合法）。
+- `server/imgmanager/imgmanager.go:274` `genPath`：`DestDir`
+  非空时前缀 dest + 类型目录（`util.IsVideo` 判视频；
+  `IsLivePhoto` 强制 image，保证伴生视频与照片同目录），
+  无日期元素；`DestDir` 为空时原日期目录布局不变；`:312`
+  `validateDestDir` 在 `Upload` / `UploadThumbnail` /
+  `UploadLiveVideo` 生成路径前校验，非法值直接报错，绝不
+  静默回落到根目录。
+- `server/api/http.go:25`：头常量 `Image-Dest-Dir`；`:31`
+  `destDirFromHeader`（缺省 ""，非法返回 400）；三个上传
+  handler（`:115` 原件、`:179` 缩略图、`:239` Live 视频）均
+  读头、传 `WithDestDir`，三个子请求带同一个头才落在同一
+  目录。Live 视频 handler 保持 `IsLivePhoto(true)`。
+- `server/imgmanager/imgmanager.go:1000` `RangeByDate`：日期
+  目录遍历之后（提前停止语义保留：回调返回 false 即停，
+  不再进相册阶段）追加相册目录阶段 `:1030`
+  `rangeAlbumDirs` + `:1060` `walkAlbumDir`（深度上限
+  `albumWalkMaxDepth = 4`，`:1058`）。相册根按名字排序；
+  跳过根部 `live` 与 `.thumbnail` 目录、跳过日期目录形状
+  （避免重复访问）；任意一级相册目录内的文件及下一层
+  （`video/`/`image/` 类型目录、`live_*` 子目录）均纳入，
+  不论传入的 date 截止（相册文件按编码文件名匹配，截止不
+  得丢弃它们）；`live_` 内非视频文件报 `IsLivePhoto: true`，
+  伴生视频不单独上报（与日期阶段语义一致）；`.thumbnail`
+  子目录在任何一层都跳过；已有日期目录遍历、排序、
+  live_ 处理、零日期归一化均未动。调用方不变：
+  `FilterNotUploaded`（`server/api/img.go`）与 `ListByDate`
+  均经同一 `RangeByDate`，均未改。设计决定：`RangeByDate`
+  不为相册文件解析日期、不用零日期占位——`FilterNotUploaded`
+  按编码文件名匹配，与日期截止无关；`ListByDate` 不按日期
+  分组，只按流式顺序返回 `Path`（日期目录在前、相册目录
+  在后），云端视图的日期取自编码文件名（既有行为）。后果：
+  相册文件在云端列表流中排在全部日期目录文件之后、按相
+  册名排序，不按文件名日期与日期目录文件交错；分页
+  （Offset/MaxReturn）同样把它们当作流尾条目。
+- `lib/sync/manual_upload_folder.dart`（新文件）：prefs key
+  `manual_upload_folder`（`:13`）、默认 `manual`（`:16`）、
+  `normalizeManualUploadFolder`（`:26`，规则与服务端
+  `SanitizeDestDir` 镜像）、`manualFolderRelativeToRoot`
+  （`:58`，把选择器原生路径换算为相对根路径）、选择器拼写
+  纯函数 `pickerNativeRoot` / `pickerChildPath` /
+  `pickerParentPath`（`:85/:95/:104`，SMB 相对拼写、
+  WebDAV/NFS `/` 开头 `/` 结尾拼写，上一级不越过浏览根）、
+  `load/saveManualUploadFolder`（`:118/:124`）。
+- `lib/state_model.dart:252`：`SettingModel.manualUploadFolder`
+  原始值 + `setManualUploadFolder`；`:264`
+  `manualUploadDestDir`（归一化结果，未设置/非法时默认
+  `manual`）。
+- `lib/global.dart:127`：iOS 加载块内读 prefs 写入
+  `SettingModel`（与筛选/并行数同一门控）。
+- `lib/storage/storage.dart:36` `destDirHeaders`（空值不产生
+  头）；`:125` 接口方法 `uploadAssetEntity` 签名未动（仍走
+  默认布局，保护 `RemoteStorageClient` mock 生成文件与测试
+  fake）；`:131` 新增类级方法 `uploadAssetEntityToDest`（三
+  个子请求共用 `destDirHeaders`，经内部 `:139`
+  `_uploadAssetEntity` 实现）。
+- `lib/gallery_body.dart:555` 与
+  `lib/gallery_viewer_route.dart:464`：两处手动上传调用点经
+  `shouldUploadManually`（FK-6 未动）后调
+  `uploadAssetEntityToDest(entity, settingModel.manualUploadDestDir)`；
+  `finishUpload`/`syncedIDs` 处理未动。自动同步
+  （`background_runner.dart` 的 `runSyncOnce`）、后台入口、
+  `FilterNotUploaded` 请求均不带该头、不传手动目录。
+- `lib/manual_upload_folder_route.dart:18` 设置页（内存态改
+  革、保存时一次性写回 `SettingModel` + prefs，非法输入禁
+  用保存）与 `:149` 选择器页：按当前 drive 类型分发
+  `ListDriveSMBDir` / `ListDriveWebdavDir` /
+  `ListDriveNFSDir`（与各 storageform 的 `rootPathDialog`
+  同一接口、同一路径拼写），浏览根植于当前 drive 的
+  rootPath（prefs：SMB `share`/`rootPath`、WebDAV
+  `webdav_root_path`、NFS `nfs_root_path`），选根本身返
+  回 ""（未设置）。
+- `lib/settings_route.dart:59`：主设置页 iOS 专属入口行（副
+  标题为生效目录，返回后刷新）。
+- l10n：`lib/l10n/app_en.arb:121` 与 `app_zh.arb` 新增 10 个
+  键（label/说明/提示/浏览/空值/非法/未设存储/选择器标题/
+  当前目录/驱动根），`flutter gen-l10n` 已重新生成
+  `lib/l10n/app_localizations*.dart` 并核对一致。
+- `README.md`：功能列表加一 bullet（手动上传分目录）与
+  fork 说明“三项”改“四项”；工作流未动，未推送。
+
+### 验证（2026-11-02，本地）
+
+- `flutter analyze`：95 issues，0 error、17 warning（与基线
+  一致，均为既有 warning）、78 info。
+- `flutter test`：**221 通过 / 0 失败**（基线 203 + 新增 18：
+  `test/unit/manual_upload_folder_test.dart` 14 个——归一化/
+  相对换算/选择器拼写/默认值与持久化往返/头生成；
+  `test/widget/manual_upload_folder_route_test.dart` 4 个——
+  回填与保存、留空默认、非法禁用保存、未设存储时浏览提示）。
+- `go vet ./server/...` 干净；`gofmt` 干净。
+- `go test -count=1 ./server/imgmanager/`：48 通过 / 0 失败
+  （含新增 5 个：`server/imgmanager/destdir_test.go`——
+  `SanitizeDestDir` 接受/拒绝表、`genPath` 类型布局与
+  live 布局、加密后缀、`Upload` 系列落点与非法拒绝、
+  `RangeByDate` 相册发现与提前停止）。
+- `go test ./server/api/ -run TestUploadDestDir|TestUploadWithoutDestDir`：
+  3 通过（头落点：照片 image/、视频 video/、Live 视频
+  image/live_/、缩略图镜像；`../evil` 400 且零写入；无头
+  时保持日期目录布局）。`./server/api` 完整包与
+  `drive/{smb,nfs}`、`drive`、`run` 包的其余失败均为既有
+  环境失败（需 live SMB/NFS 服务或 Docker 容器，本 VM 无；
+  `TestEmbeddedBindsLocalhost` 为既有网络沙箱行为），与
+  本改动无关（改动文件不含这些包）。
+- 未验证：真机选择器行为（各 drive 的目录列举实测）、NAS
+  上手动目录的首次创建、真机手动上传落点与重传行为。

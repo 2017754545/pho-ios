@@ -19,8 +19,22 @@ const (
 	HeaderEncryptType     = "Image-Encrypt-Type"
 	HeaderEncryptPassword = "Image-Encrypt-Password"
 	HeaderIsLivePhoto     = "Image-Is-Live-Photo"
-	maxUploadSize         = 500 << 20 // 500MB
+	// HeaderDestDir：手动上传的目标子目录（相对于驱动根目录，如
+	// "manual"），仅手动上传发送；自动同步不发送。服务端按
+	// SanitizeDestDir 校验，非法值返回 400，绝不静默回落到根目录。
+	HeaderDestDir = "Image-Dest-Dir"
+	maxUploadSize = 500 << 20 // 500MB
 )
+
+// destDirFromHeader 读取并校验 Image-Dest-Dir 头：缺省返回 ""（自动
+// 同步布局）；非法值返回错误，调用方应以 400 拒绝该上传。
+func destDirFromHeader(r *http.Request) (string, error) {
+	raw := r.Header.Get(HeaderDestDir)
+	if raw == "" {
+		return "", nil
+	}
+	return imgmanager.SanitizeDestDir(raw)
+}
 
 func getEncryptType(t string) imgmanager.EncryptType {
 	switch t {
@@ -98,11 +112,16 @@ func (a *api) httpUpload(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid path", http.StatusBadRequest)
 		return
 	}
+	destDir, err := destDirFromHeader(r)
+	if err != nil {
+		http.Error(w, "invalid dest dir: "+err.Error(), http.StatusBadRequest)
+		return
+	}
 	r.Body = http.MaxBytesReader(w, r.Body, maxUploadSize)
 	err = a.im.Upload(r.Body, length, encodeName(dateTime, name), dateTime, imgmanager.WithEncrypt(imgmanager.EncryptOption{
 		Type:     enctype,
 		Password: encPassword,
-	}), imgmanager.IsLivePhoto(isLivePhoto))
+	}), imgmanager.IsLivePhoto(isLivePhoto), imgmanager.WithDestDir(destDir))
 
 	if err != nil {
 		var maxBytesErr *http.MaxBytesError
@@ -157,11 +176,16 @@ func (a *api) httpUploadThumbnail(w http.ResponseWriter, r *http.Request) {
 	// 同一个有效日期同时用于文件名编码与存储目录：此前 genPath 在
 	// 内部把 1990 年前日期换成 Now，而文件名已按原日期编码，两者分叉。
 	dateTime = imgmanager.EffectiveFileDate(dateTime)
+	destDir, err := destDirFromHeader(r)
+	if err != nil {
+		http.Error(w, "invalid dest dir: "+err.Error(), http.StatusBadRequest)
+		return
+	}
 	r.Body = http.MaxBytesReader(w, r.Body, maxUploadSize)
 	err = a.im.UploadThumbnail(r.Body, length, encodeName(dateTime, name), dateTime, imgmanager.WithEncrypt(imgmanager.EncryptOption{
 		Type:     enctype,
 		Password: encPassword,
-	}), imgmanager.IsLivePhoto(isLivePhoto))
+	}), imgmanager.IsLivePhoto(isLivePhoto), imgmanager.WithDestDir(destDir))
 	if err != nil {
 		var maxBytesErr *http.MaxBytesError
 		if errors.As(err, &maxBytesErr) {
@@ -210,11 +234,18 @@ func (a *api) httpUploadLiveVideo(w http.ResponseWriter, r *http.Request) {
 	// 同一个有效日期同时用于文件名编码与存储目录：此前 genPath 在
 	// 内部把 1990 年前日期换成 Now，而文件名已按原日期编码，两者分叉。
 	dateTime = imgmanager.EffectiveFileDate(dateTime)
+	// Live 视频强制 image + live_ 布局（见 genPath）：伴生视频必须与
+	// 照片同目录，IsLivePhoto(true) 保证类型目录取 image 而非 video。
+	destDir, err := destDirFromHeader(r)
+	if err != nil {
+		http.Error(w, "invalid dest dir: "+err.Error(), http.StatusBadRequest)
+		return
+	}
 	r.Body = http.MaxBytesReader(w, r.Body, maxUploadSize)
 	err = a.im.UploadLiveVideo(r.Body, length, encodeName(dateTime, name), dateTime, imgmanager.WithEncrypt(imgmanager.EncryptOption{
 		Type:     enctype,
 		Password: encPassword,
-	}), imgmanager.IsLivePhoto(true))
+	}), imgmanager.IsLivePhoto(true), imgmanager.WithDestDir(destDir))
 	if err != nil {
 		var maxBytesErr *http.MaxBytesError
 		if errors.As(err, &maxBytesErr) {

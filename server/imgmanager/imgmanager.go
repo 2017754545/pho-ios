@@ -153,6 +153,14 @@ func (im *ImgManager) doAction(act action) {
 type Options struct {
 	EncyptOption EncryptOption
 	IsLivePhoto  bool
+	// DestDir 是手动上传的目标子目录（相对于驱动根目录，如 "manual"），
+	// 由 HTTP 头 Image-Dest-Dir 传入。为空表示自动同步的默认布局
+	// （根目录 + 日期子目录）。非空时文件按类型分目录存放，不再按
+	// 日期分子目录（见 genPath）。调用方必须先经 SanitizeDestDir
+	// 校验；Upload 系列方法也会在生成路径前再次校验，非法值直接
+	// 返回错误，绝不静默回落到根目录（否则手动上传会与自动同步
+	// 混进同一个文件夹）。
+	DestDir string
 }
 
 // EncryptType 和常量已迁移至 encrypt.go
@@ -176,6 +184,68 @@ func IsLivePhoto(isLivePhoto bool) OptionFunc {
 	}
 }
 
+// WithDestDir 设置手动上传的目标子目录。值必须是 SanitizeDestDir
+// 接受的相对路径；Upload 系列方法在生成路径前会再次校验。
+func WithDestDir(destDir string) OptionFunc {
+	return func(o *Options) {
+		o.DestDir = destDir
+	}
+}
+
+// SanitizeDestDir 校验并规范化手动上传的目标子目录：相对于驱动
+// 根目录的相对路径，用 `/` 分隔。空字符串表示“未指定”（调用方
+// 用它表示自动同步布局，合法）。拒绝：反斜杠、绝对路径（以 `/`
+// 开头）、任何 `..` / `.` 元素、空段（`//`、首尾斜杠）、首段为
+// `live` / `.thumbnail`、首段为日期目录形状（4 位或 8 位纯数字，
+// 会与 RangeByDate 的日期目录遍历重复访问）。严格拒绝而非折叠，
+// 因为目录浏览 UI 从不产生这类段，且静默折叠会把文件写到用户
+// 没选过的目录。
+func SanitizeDestDir(raw string) (string, error) {
+	if raw == "" {
+		return "", nil
+	}
+	if strings.Contains(raw, "\\") {
+		return "", fmt.Errorf("invalid dest dir separator: %s", raw)
+	}
+	if strings.HasPrefix(raw, "/") {
+		return "", fmt.Errorf("absolute dest dir not allowed: %s", raw)
+	}
+	if util.HasDotDotElement(raw) {
+		return "", fmt.Errorf("path traversal not allowed: %s", raw)
+	}
+	parts := strings.Split(raw, "/")
+	for _, p := range parts {
+		if p == "" {
+			return "", fmt.Errorf("empty path segment in dest dir: %s", raw)
+		}
+		if p == "." {
+			return "", fmt.Errorf("invalid path segment in dest dir: %s", raw)
+		}
+	}
+	first := parts[0]
+	if first == "live" || first == ".thumbnail" {
+		return "", fmt.Errorf("reserved dest dir name: %s", raw)
+	}
+	if isDateDirShape(first) {
+		return "", fmt.Errorf("dest dir must not look like a date directory: %s", raw)
+	}
+	return strings.Join(parts, "/"), nil
+}
+
+// isDateDirShape 报告名字是否为日期目录形状：4 位或 8 位纯数字，
+// 与 RangeByDate 的年目录（4 位）/ YYYYMMDD 目录（8 位）相同。
+func isDateDirShape(name string) bool {
+	if len(name) != 4 && len(name) != 8 {
+		return false
+	}
+	for i := 0; i < len(name); i++ {
+		if name[i] < '0' || name[i] > '9' {
+			return false
+		}
+	}
+	return true
+}
+
 // EffectiveFileDate 把照片日期归一为可用于存储路径的“有效日期”：
 // 零值或早于 1990-01-01 的日期（客户端缺失/损坏的元数据常见值）
 // 一律回退到当前时间，且一次调用只取一次 time.Now()。
@@ -192,19 +262,37 @@ func EffectiveFileDate(date time.Time) time.Time {
 	return date
 }
 
+// genPath 构造存储路径。两种布局：
+//   - 默认（DestDir 为空）：{日期目录}/{文件名}，日期目录由 dirType
+//     决定（YYYY/MM/DD 或 YYYYMMDD），与历史行为一致。
+//   - 手动上传（DestDir 非空）：{dest}/{video|image}/{文件名}，不按
+//     日期分子目录。类型目录由文件扩展名决定（util.IsVideo）；
+//     Live Photo 的伴生视频（IsLivePhoto 且扩展名为视频）强制进
+//     image 目录，与照片同在 live_<base>/ 子目录内——
+//     GetLiveVideoOffset 按照片所在目录查找伴生视频，视频必须与
+//     照片相邻，绝不能进 video/ 目录。fixPath（.aes 后缀）行为不变。
 func (im *ImgManager) genPath(name string, date time.Time, options Options) string {
 	date = EffectiveFileDate(date)
-	im.dirTypeMu.RLock()
-	dirType := im.dirType
-	im.dirTypeMu.RUnlock()
 	elems := []string{}
-	switch dirType {
-	case pb.DirectoryType_DIRECTORY_TYPE_01:
-		elems = append(elems, date.Format("2006/01/02"))
-	case pb.DirectoryType_DIRECTORY_TYPE_02:
-		elems = append(elems, date.Format("20060102/"))
-	default:
-		elems = append(elems, date.Format("2006/01/02"))
+	if options.DestDir != "" {
+		elems = append(elems, options.DestDir)
+		if options.IsLivePhoto || !util.IsVideo(name) {
+			elems = append(elems, "image")
+		} else {
+			elems = append(elems, "video")
+		}
+	} else {
+		im.dirTypeMu.RLock()
+		dirType := im.dirType
+		im.dirTypeMu.RUnlock()
+		switch dirType {
+		case pb.DirectoryType_DIRECTORY_TYPE_01:
+			elems = append(elems, date.Format("2006/01/02"))
+		case pb.DirectoryType_DIRECTORY_TYPE_02:
+			elems = append(elems, date.Format("20060102/"))
+		default:
+			elems = append(elems, date.Format("2006/01/02"))
+		}
 	}
 	if options.IsLivePhoto {
 		elems = append(elems, fmt.Sprintf("live_%s", name[:len(name)-len(filepath.Ext(name))]))
@@ -215,6 +303,22 @@ func (im *ImgManager) genPath(name string, date time.Time, options Options) stri
 		path = fixPath(path, options.EncyptOption.Type)
 	}
 	return path
+}
+
+// validateDestDir 校验 Options.DestDir 并返回规范化后的值：
+// Upload 系列方法在生成路径前调用，非法值直接报错，绝不静默
+// 回落到根目录。HTTP 层也会先行校验（返回 400），这里是纵深防御
+// （直接调用 Upload 的调用方同样受约束）。
+func validateDestDir(options *Options) error {
+	if options.DestDir == "" {
+		return nil
+	}
+	sanitized, err := SanitizeDestDir(options.DestDir)
+	if err != nil {
+		return fmt.Errorf("invalid dest dir: %w", err)
+	}
+	options.DestDir = sanitized
+	return nil
 }
 
 // sizeCheckReader 校验 reader 实际产出的字节数与声明一致。
@@ -246,6 +350,9 @@ func (im *ImgManager) Upload(content io.Reader, contentSize int64, name string, 
 	var options Options
 	for _, opt := range opts {
 		opt(&options)
+	}
+	if err := validateDestDir(&options); err != nil {
+		return err
 	}
 	path := im.genPath(name, date, options)
 	if content == nil {
@@ -280,6 +387,9 @@ func (im *ImgManager) UploadThumbnail(thumbnailContent io.Reader, thumbnailSize 
 	for _, opt := range opts {
 		opt(&options)
 	}
+	if err := validateDestDir(&options); err != nil {
+		return err
+	}
 	if thumbnailContent == nil {
 		return fmt.Errorf("thumbnail content is nil")
 	}
@@ -310,6 +420,9 @@ func (im *ImgManager) UploadLiveVideo(content io.Reader, size int64, name string
 	var options Options
 	for _, opt := range opts {
 		opt(&options)
+	}
+	if err := validateDestDir(&options); err != nil {
+		return err
 	}
 	if content == nil {
 		return fmt.Errorf("thumbnail content is nil")
@@ -746,7 +859,11 @@ func (im *ImgManager) RangeByDate(date time.Time, f func(info ImgInfo) bool) err
 			continue
 		}
 		if len(yinfo.Name()) == 8 {
-			dirDate, err := time.Parse("20060102", yinfo.Name())
+			// 日期目录名按本地时区解析：time.Parse 返回 UTC 午夜，
+			// 在东时区会比本地午夜晚数小时，导致请求当日的目录被
+			// dirDate.After(t) 误判为未来而排除（type-01 分支用
+			// time.Local 构造 dirDate，两边必须一致）。
+			dirDate, err := time.ParseInLocation("20060102", yinfo.Name(), time.Local)
 			if err != nil {
 				im.logger.Printf("Error parsing date: %s, %s", yinfo.Name(), err)
 				continue
@@ -829,6 +946,7 @@ func (im *ImgManager) RangeByDate(date time.Time, f func(info ImgInfo) bool) err
 	}
 
 	sort.Sort(dirDesc(dirInfos))
+	stoppedEarly := false
 	for _, dirInfo := range dirInfos {
 		goOn := true
 		var walkErr error
@@ -868,10 +986,143 @@ func (im *ImgManager) RangeByDate(date time.Time, f func(info ImgInfo) bool) err
 			return walkErr
 		}
 		if !goOn {
+			stoppedEarly = true
 			break
 		}
 	}
+	if stoppedEarly {
+		return nil
+	}
+	// 相册目录阶段：手动上传的文件按类型分目录存放在驱动根目录下
+	// 的一级子目录（如 manual/video/、manual/image/）中，路径中
+	// 没有日期，日期目录遍历永远看不到它们；若不纳入枚举，
+	// FilterNotUploaded 会误判它们未上传，自动同步会重传一份到
+	// 日期目录。相册文件按编码文件名匹配，与日期截止无关，因此
+	// 不论传入的 date 一律纳入（排在日期目录之后，不改变已有
+	// 列表顺序）。遍历覆盖任意一级相册目录（不只当前配置的手动
+	// 目录），改手动目录设置后旧目录下的文件仍被发现，不重传。
+	return im.rangeAlbumDirs(d, f)
+}
+
+// isAlbumDirName 报告根目录项是否为相册目录候选：目录、不是
+// `live` / `.thumbnail`、不是日期目录形状（日期目录已由日期
+// 遍历处理，相册遍历跳过以免重复访问同一目录两次）。
+func isAlbumDirName(info fs.FileInfo) bool {
+	if !info.IsDir() {
+		return false
+	}
+	name := info.Name()
+	if name == "live" || name == ".thumbnail" {
+		return false
+	}
+	if len(name) == 8 {
+		if _, err := time.Parse("20060102", name); err == nil {
+			return false
+		}
+	}
+	if len(name) == 4 {
+		if _, err := strconv.Atoi(name); err == nil {
+			return false
+		}
+	}
+	return true
+}
+
+// rangeAlbumDirs 枚举全部一级相册目录下的文件。相册根按名字排序
+// 后遍历，保证顺序确定。回调返回 false（提前停止）或 Range 出错
+// 时立即停止并向上传播，与日期目录阶段的语义一致。
+func (im *ImgManager) rangeAlbumDirs(d StorageDrive, f func(info ImgInfo) bool) error {
+	rootEntries, err := im.listDir(d, ".")
+	if err != nil {
+		im.logger.Println("Error listing album dirs:", err)
+		return err
+	}
+	albums := make([]string, 0)
+	for _, info := range rootEntries {
+		if isAlbumDirName(info) {
+			albums = append(albums, info.Name())
+		}
+	}
+	sort.Strings(albums)
+	for _, album := range albums {
+		goOn, err := im.walkAlbumDir(d, album, 0, f)
+		if err != nil {
+			return err
+		}
+		if !goOn {
+			return nil
+		}
+	}
 	return nil
+}
+
+// albumWalkMaxDepth 是相册遍历相对相册根的最大递归深度：覆盖
+// 多段手动目录（如 a/b）+ 类型目录（video/image）+ live_ 子目录，
+// 同时给任意嵌套的非日期树一个上界，避免无界递归。
+const albumWalkMaxDepth = 4
+
+// walkAlbumDir 递归枚举一个相册目录内的文件：直接文件上报
+// IsLivePhoto=false；live_ 子目录内的非视频文件按 IsLivePhoto=true
+// 上报（与日期目录阶段的 live_ 语义完全一致），伴生视频不单独
+// 上报（由 GetLiveVideoOffset 按照片所在目录查找）；`.thumbnail`
+// 子目录在任何一层都跳过，避免缩略图被当成照片。返回是否应
+// 继续遍历（回调返回 false 即停止）。
+func (im *ImgManager) walkAlbumDir(d StorageDrive, dir string, depth int, f func(info ImgInfo) bool) (bool, error) {
+	goOn := true
+	var walkErr error
+	err := d.Range(dir, func(info fs.FileInfo) bool {
+		if !goOn {
+			return false
+		}
+		if info.IsDir() {
+			name := info.Name()
+			if name == ".thumbnail" {
+				return true
+			}
+			if strings.HasPrefix(name, "live_") {
+				if rerr := d.Range(filepath.Join(dir, name), func(info2 fs.FileInfo) bool {
+					if info2.IsDir() {
+						return goOn
+					}
+					if !util.IsVideo(info2.Name()) {
+						goOn = f(ImgInfo{
+							Path:        filepath.Join(dir, name, info2.Name()),
+							Size:        info2.Size(),
+							IsLivePhoto: true,
+						})
+					}
+					return goOn
+				}); rerr != nil {
+					walkErr = rerr
+					goOn = false
+				}
+				return goOn
+			}
+			if depth < albumWalkMaxDepth {
+				cont, rerr := im.walkAlbumDir(d, filepath.Join(dir, name), depth+1, f)
+				if rerr != nil {
+					walkErr = rerr
+					goOn = false
+				} else {
+					goOn = cont
+				}
+			}
+			return goOn
+		}
+		goOn = f(ImgInfo{
+			Path:        filepath.Join(dir, info.Name()),
+			Size:        info.Size(),
+			IsLivePhoto: false,
+		})
+		return goOn
+	})
+	if err != nil {
+		return false, err
+	}
+	if walkErr != nil {
+		return false, walkErr
+	}
+	return goOn, nil
 }
 
 func (im *ImgManager) listDir(d StorageDrive, path string) ([]fs.FileInfo, error) {

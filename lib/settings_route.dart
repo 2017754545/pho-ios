@@ -6,6 +6,7 @@ import 'package:img_syncer/background_sync_route.dart';
 import 'package:img_syncer/choose_album_route.dart';
 import 'package:img_syncer/design_tokens.dart';
 import 'package:img_syncer/filter_settings_route.dart';
+import 'package:img_syncer/manual_upload_folder_route.dart';
 import 'package:img_syncer/setting_storage_route.dart';
 import 'package:img_syncer/global.dart';
 import 'package:img_syncer/state_model.dart';
@@ -53,6 +54,20 @@ class SettingsRouteState extends State<SettingsRoute> {
             ),
           ),
           if (Platform.isIOS) ...[
+            tile(
+              Icons.folder_copy_outlined,
+              l10n.manualUploadFolder,
+              settingModel.manualUploadDestDir,
+              onTap: () async {
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const ManualUploadFolderRoute(),
+                  ),
+                );
+                if (mounted) setState(() {});
+              },
+            ),
             tile(
               Icons.file_upload_outlined,
               l10n.parallelUploadCount,

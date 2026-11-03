@@ -460,7 +460,8 @@ class GalleryViewerRouteState extends State<GalleryViewerRoute>
     }
     await keepScreenOn(true);
     try {
-      await storage.uploadAssetEntity(entity);
+      await storage.uploadAssetEntityToDest(
+          entity, settingModel.manualUploadDestDir);
       if (mounted) {
         SnackBarManager.showSnackBar(
             "${l10n.upload} ${await asset.name()} ${l10n.success}");

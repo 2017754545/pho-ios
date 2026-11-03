@@ -799,6 +799,66 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'No camera photos in this album'**
   String get noCameraPhotos;
+
+  /// No description provided for @manualUploadFolder.
+  ///
+  /// In en, this message translates to:
+  /// **'Manual upload folder'**
+  String get manualUploadFolder;
+
+  /// No description provided for @manualUploadFolderDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'Manually uploaded files go to this folder under the drive root, sorted into video/ and image/ subfolders (not by date). Auto sync still uses the drive root with date folders. Leave empty to use the default folder \"manual\". Changing the folder does not move files already uploaded.'**
+  String get manualUploadFolderDesc;
+
+  /// No description provided for @manualUploadFolderHint.
+  ///
+  /// In en, this message translates to:
+  /// **'e.g. manual'**
+  String get manualUploadFolderHint;
+
+  /// No description provided for @manualUploadFolderBrowse.
+  ///
+  /// In en, this message translates to:
+  /// **'Browse'**
+  String get manualUploadFolderBrowse;
+
+  /// No description provided for @manualUploadFolderEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'Folder is empty; using the default folder \"manual\".'**
+  String get manualUploadFolderEmpty;
+
+  /// No description provided for @manualUploadFolderInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Invalid folder: use a path relative to the drive root, without \"..\", leading slash, or backslashes.'**
+  String get manualUploadFolderInvalid;
+
+  /// No description provided for @manualUploadFolderNotSet.
+  ///
+  /// In en, this message translates to:
+  /// **'Set up remote storage first, then choose the manual upload folder.'**
+  String get manualUploadFolderNotSet;
+
+  /// No description provided for @manualUploadFolderPickerTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose manual upload folder'**
+  String get manualUploadFolderPickerTitle;
+
+  /// No description provided for @manualUploadFolderCurrent.
+  ///
+  /// In en, this message translates to:
+  /// **'Current: {folder}'**
+  String manualUploadFolderCurrent(Object folder);
+
+  /// No description provided for @manualUploadFolderRoot.
+  ///
+  /// In en, this message translates to:
+  /// **'Drive root'**
+  String get manualUploadFolderRoot;
 }
 
 class _AppLocalizationsDelegate
