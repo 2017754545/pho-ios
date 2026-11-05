@@ -42,6 +42,7 @@ Pho is a simple app designed for viewing and synchronizing photos to cloud stora
 * Parallel upload (added by this fork, iOS only: 1–4 concurrent uploads, capped at 2 in background sync)
 * Custom upload filters (added by this fork, iOS only: exclude photos by type, date range, or extension)
 * Camera-only album (added by this fork, iOS only: display-layer filter; sync is unaffected)
+* Files tab (added by this fork, iOS only: a "Files" tab next to "Cloud" browses synced photos/videos by folder; tapping a folder drills in, tapping a file opens the viewer; no server or protocol change)
 
 ### Supported Cloud Storage
 - [x] Samba

@@ -77,6 +77,9 @@ void main() {
         'gallery_viewer_route.dart', // Colors.black(L441)+white(L446,L673)
         'video_route.dart',         // Colors.black(L97)+white(L74,L116)
         'buy_route.dart',           // Colors.white(L91)
+        'files_body.dart',          // 仅 1 处 Colors.white：缩略图上的视频播放图标，
+                                    // 须恒为白色以保证在任意照片上可读（同 gallery_body
+                                    // 的 overlay 豁免理由）
       };
 
       final pattern = RegExp(r'Colors\.(black|white|grey|orange|green|red|blue)\b');

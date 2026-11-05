@@ -110,6 +110,24 @@ abstract class AppLocalizations {
   /// **'Cloud'**
   String get cloud;
 
+  /// No description provided for @files.
+  ///
+  /// In en, this message translates to:
+  /// **'Files'**
+  String get files;
+
+  /// No description provided for @noFiles.
+  ///
+  /// In en, this message translates to:
+  /// **'No files'**
+  String get noFiles;
+
+  /// No description provided for @folderFileCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} files'**
+  String folderFileCount(int count);
+
   /// No description provided for @sync.
   ///
   /// In en, this message translates to:

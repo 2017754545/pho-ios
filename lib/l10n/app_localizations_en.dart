@@ -15,6 +15,17 @@ class AppLocalizationsEn extends AppLocalizations {
   String get cloud => 'Cloud';
 
   @override
+  String get files => 'Files';
+
+  @override
+  String get noFiles => 'No files';
+
+  @override
+  String folderFileCount(int count) {
+    return '$count files';
+  }
+
+  @override
   String get sync => 'Sync';
 
   @override

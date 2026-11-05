@@ -11,7 +11,7 @@ Pho - 一个用于查看和上传照片的无服务端应用
   <a href="README.md">中文</a> | <a href="README_EN.md">English</a>
 </p>
 
-> **本仓库说明（fork）**：这是基于上游 [fregie/pho](https://github.com/fregie/pho)（v1.5.1）的个人自用 fork，**仅针对 iOS**，不改动连接方式与同步协议。相对上游新增四项功能：**并行上传**、**自定义上传筛选器（按类型/日期/扩展名）**、**仅相机相册（展示层）**、**手动上传分目录（video/image）**；**不含加密功能**。完整中文改动日志见 [CHANGES-iOS.md](CHANGES-iOS.md)。本 fork 通过 GitHub Actions（macOS runner）构建**未签名 IPA**，用户用个人 Apple ID 证书自行侧载，构建方式见下文“构建”一节与 [.github/workflows/ios-build.yml](.github/workflows/ios-build.yml)。上游原作者与 GPLv3 许可证声明见文末与 [LICENSE](LICENSE)。
+> **本仓库说明（fork）**：这是基于上游 [fregie/pho](https://github.com/fregie/pho)（v1.5.1）的个人自用 fork，**仅针对 iOS**，不改动连接方式与同步协议。相对上游新增五项功能：**并行上传**、**自定义上传筛选器（按类型/日期/扩展名）**、**仅相机相册（展示层）**、**手动上传分目录（video/image）**、**文件页签（按文件夹浏览云端）**；**不含加密功能**。完整中文改动日志见 [CHANGES-iOS.md](CHANGES-iOS.md)。本 fork 通过 GitHub Actions（macOS runner）构建**未签名 IPA**，用户用个人 Apple ID 证书自行侧载，构建方式见下文“构建”一节与 [.github/workflows/ios-build.yml](.github/workflows/ios-build.yml)。上游原作者与 GPLv3 许可证声明见文末与 [LICENSE](LICENSE)。
 
 ### 安装
 
@@ -42,6 +42,7 @@ Pho - 一个用于查看和上传照片的无服务端应用
 * 自定义上传筛选器（本 fork 新增，仅 iOS：按类型、日期范围、扩展名排除不上传的照片）
 * 仅相机相册（本 fork 新增，仅 iOS：相册展示时只显示相机拍摄的照片，同步不受影响）
 * 手动上传分目录（本 fork 新增，仅 iOS：手动上传存到设置里固定的手动目录，按 video/image 分类型存放，不按日期分子目录；自动同步仍用根目录加日期目录，未设置时手动目录默认为 manual）
+* 文件页签（本 fork 新增，仅 iOS：底部导航“云端”旁新增“文件”，按文件夹浏览云端已同步的照片/视频；点文件夹进入，点文件打开查看器；不改动服务端与协议）
 
 ### 支持的网络储存
 - [x] Samba

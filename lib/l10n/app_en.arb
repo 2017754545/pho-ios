@@ -1,6 +1,10 @@
 {
   "local": "Local",
   "cloud": "Cloud",
+  "files": "Files",
+  "noFiles": "No files",
+  "folderFileCount": "{count} files",
+  "@folderFileCount": { "placeholders": { "count": { "type": "int" } } },
   "sync": "Sync",
   "cloudSync": "Cloud sync",
   "localFolder": "Local folder",

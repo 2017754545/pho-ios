@@ -15,6 +15,17 @@ class AppLocalizationsZh extends AppLocalizations {
   String get cloud => '云端';
 
   @override
+  String get files => '文件';
+
+  @override
+  String get noFiles => '暂无文件';
+
+  @override
+  String folderFileCount(int count) {
+    return '$count 个文件';
+  }
+
+  @override
   String get sync => '同步';
 
   @override

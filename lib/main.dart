@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:img_syncer/desktop/home_page.dart';
 import 'package:img_syncer/event_bus.dart';
+import 'package:img_syncer/files_body.dart';
 import 'package:img_syncer/global.dart';
 import 'package:img_syncer/util.dart';
 import 'package:provider/provider.dart';
@@ -280,6 +281,7 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
                           useLocal: true,
                         ),
                         GalleryBody(useLocal: false),
+                        const FilesBody(),
                         Consumer<SettingModel>(
                           builder: (context, model, child) {
                             return SyncBody(
@@ -307,6 +309,11 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
                           icon: const Icon(Icons.cloud_outlined),
                           selectedIcon: const Icon(Icons.cloud),
                           label: l10n.cloud,
+                        ),
+                        NavigationDestination(
+                          icon: const Icon(Icons.folder_outlined),
+                          selectedIcon: const Icon(Icons.folder),
+                          label: l10n.files,
                         ),
                         NavigationDestination(
                           icon: const Icon(Icons.cloud_sync_outlined),

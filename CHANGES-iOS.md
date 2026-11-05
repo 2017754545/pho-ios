@@ -684,3 +684,38 @@ Go：见第十一节行为变化段。测试：U1–U8 的期望按“生产设�
   本改动无关（改动文件不含这些包）。
 - 未验证：真机选择器行为（各 drive 的目录列举实测）、NAS
   上手动目录的首次创建、真机手动上传落点与重传行为。
+
+## 十三、文件页签（按文件夹浏览云端，2026-11-05）
+
+底部导航“云端”旁新增“文件”页签，按文件夹浏览云端已同步的
+照片/视频；点文件夹进入子目录，点文件打开与云端页签相同的
+查看器；系统返回/左上角返回键在子目录时先退回上一级。
+
+- 树完全在客户端由云端页签已有的远端列表
+  （`AssetModel.remoteAssets`，`remote.path`）拼出，不改动
+  Go 服务端、proto 与同步协议；空文件夹与非照片/视频文件
+  不在树里（服务端 `RangeByDate` 只返回已同步的照片/视频）。
+- 新文件 `lib/files_body.dart`（页签 UI：面包屑标题、下拉刷新、
+  空态/未设存储提示、文件夹行、文件行缩略图+大小+视频角标）、
+  `lib/files_tree.dart`（纯函数：路径归一化、单层文件夹视图、
+  递归文件计数、文件夹/文件名降序）。
+- `lib/main.dart`：导航加第四个目的地（`Icons.folder`，`l10n.files`），
+  `IndexedStack` 内“云端”后插入 `FilesBody`；同步页顺延一位，
+  其余索引引用均为通用 `_selectedIndex`，无硬编码序号。
+- l10n 新键 `files` / `noFiles` / `folderFileCount`（中英），
+  `flutter gen-l10n` 已重新生成；`Colors.white` 一处（缩略图上
+  的视频播放角标）按既有 overlay 豁免理由加入
+  `theme_consistency_test.dart` 白名单。
+- `README.md` / `README_EN.md`：功能列表加“文件页签”一项，
+  fork 功能计数“四项”改“五项”。
+
+### 验证（2026-11-05，本地）
+
+- `flutter analyze`：0 error（98 issues，均为既有 info）。
+- `flutter test`：**228 通过 / 0 失败**（基线 221 + 新增 7：
+  `test/unit/files_tree_test.dart`——根目录、递归计数、逐级
+  下钻、叶目录排序、manual 的 video/image/live_ 划分、前导
+  斜杠与反斜杠归一化、空列表与未知前缀）。
+- Go 服务端未动，未跑 `go vet`/`go test`。
+- 未验证：真机页签切换、文件夹下钻、文件打开查看器、空态与
+  未设存储提示、下拉刷新。
