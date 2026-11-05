@@ -128,6 +128,48 @@ abstract class AppLocalizations {
   /// **'{count} files'**
   String folderFileCount(int count);
 
+  /// No description provided for @emptyFolder.
+  ///
+  /// In en, this message translates to:
+  /// **'This folder is empty'**
+  String get emptyFolder;
+
+  /// No description provided for @createFolder.
+  ///
+  /// In en, this message translates to:
+  /// **'New folder'**
+  String get createFolder;
+
+  /// No description provided for @createFolderTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Create folder'**
+  String get createFolderTitle;
+
+  /// No description provided for @createFolderHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Folder name'**
+  String get createFolderHint;
+
+  /// No description provided for @createFolderInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Invalid folder name'**
+  String get createFolderInvalid;
+
+  /// No description provided for @uploadToFolder.
+  ///
+  /// In en, this message translates to:
+  /// **'Upload to this folder'**
+  String get uploadToFolder;
+
+  /// No description provided for @previewNotSupported.
+  ///
+  /// In en, this message translates to:
+  /// **'Only photos and videos can be previewed'**
+  String get previewNotSupported;
+
   /// No description provided for @sync.
   ///
   /// In en, this message translates to:

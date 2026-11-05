@@ -266,6 +266,21 @@ func (d *Webdav) Range(dir string, deal func(fs.FileInfo) bool) error {
 	return nil
 }
 
+// MkdirAll 实现 StorageDrive.MkdirAll：dir 相对于驱动根目录，
+// 已存在时成功。用与 Upload 建父目录同一原语（cli.MkdirAll），
+// 同样经 mkdirLock 串行化（gowebdav 库的 mkdir 竞态防护）。
+func (d *Webdav) MkdirAll(dir string) error {
+	rootPath := d.getRootPath()
+	if rootPath == "" {
+		return fmt.Errorf("root path is empty")
+	}
+	fullPath := filepath.ToSlash(filepath.Join(rootPath, dir))
+	d.mkdirLock.Lock()
+	err := d.cli.MkdirAll(fullPath, 0755)
+	d.mkdirLock.Unlock()
+	return err
+}
+
 type desc []fs.FileInfo
 
 func (d desc) Len() int      { return len(d) }

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
@@ -37,6 +38,12 @@ Map<String, String> destDirHeaders(String? destDir) =>
     destDir == null || destDir.isEmpty
         ? const {}
         : {'Image-Dest-Dir': destDir};
+
+/// 精确目录模式头：仅精确上传发送（Image-Dest-Exact: 1），三个
+/// 子请求必须带同一个头；非精确模式不产生头，服务端保持原有
+/// 类型分目录行为。
+Map<String, String> exactDirHeaders(bool exact) =>
+    exact ? const {'Image-Dest-Exact': '1'} : const {};
 
 /// 用 pathSegments 构造指向本地 Go server 的 HTTP URL：文件名按段编码，
 /// 含空格 / `#` / `?` 的标题也不会被 Uri.parse 截断（`#` 后成 fragment、
@@ -80,6 +87,32 @@ bool shouldDeleteLocalFileAfterUpload({
 RemoteStorageClient? _storageOverride;
 RemoteStorageClient get storageClient => _storageOverride ?? storage;
 void setStorageForTest(RemoteStorageClient v) => _storageOverride = v;
+
+/// 目录浏览端点（POST /__dir/list）返回的单层条目：只含驱动
+/// Range 直接返回的字段，不做递归。排序由调用方负责。
+class DirEntry {
+  DirEntry({
+    required this.name,
+    required this.isDir,
+    required this.size,
+    this.modTime,
+  });
+
+  final String name;
+  final bool isDir;
+  final int size;
+  final DateTime? modTime;
+
+  factory DirEntry.fromJson(Map<String, dynamic> json) {
+    final modTimeRaw = json['mod_time'];
+    return DirEntry(
+      name: json['name'] as String? ?? '',
+      isDir: json['is_dir'] as bool? ?? false,
+      size: (json['size'] as num?)?.toInt() ?? 0,
+      modTime: modTimeRaw is String ? DateTime.tryParse(modTimeRaw) : null,
+    );
+  }
+}
 
 class RemoteStorage implements RemoteStorageClient {
   int bufferSize = 1024 * 1024;
@@ -133,10 +166,60 @@ class RemoteStorage implements RemoteStorageClient {
     await _uploadAssetEntity(asset, destDir);
   }
 
+  /// 精确目录上传：与 [uploadAssetEntityToDest] 相同，但三个子请求
+  /// 额外带 Image-Dest-Exact 头，文件直接落在 [dir] 下（[dir] 为
+  /// "" 时落在根目录），不按类型分子目录。服务端按浏览路径规则
+  /// 校验 [dir]（日期形状目录合法，见 SanitizeBrowseDir）。
+  Future<void> uploadAssetEntityToExactDir(
+      AssetEntity asset, String dir) async {
+    await _uploadAssetEntity(asset, dir, exact: true);
+  }
+
+  /// 列出 [dir]（相对于驱动根目录，"" 表示根目录）的单层条目。
+  /// 经 POST /__dir/list；非 200 时抛带服务端消息的异常，调用
+  /// 方可直接展示给用户。排序由调用方负责。
+  Future<List<DirEntry>> listDirEntries(String dir) async {
+    await checkServer();
+    // 单次请求内快照 base URL（与上传相同的原因：checkServer
+    // 可能重启 server 并切换 httpBaseUrl）。
+    final String listBaseUrl = httpBaseUrl;
+    final rsp = await httpClient.post(
+      storageHttpUri(['__dir', 'list'], baseUrl: listBaseUrl),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'dir': dir}),
+    );
+    if (rsp.statusCode != 200) {
+      throw Exception('list dir failed: [${rsp.statusCode}] ${rsp.body}');
+    }
+    final decoded = jsonDecode(rsp.body) as Map<String, dynamic>;
+    final entries = decoded['entries'] as List<dynamic>? ?? [];
+    return entries
+        .whereType<Map<String, dynamic>>()
+        .map(DirEntry.fromJson)
+        .toList();
+  }
+
+  /// 在驱动上创建 [dir]（相对于驱动根目录）及其父目录。
+  /// 经 POST /__dir/mkdir；非 200 时抛带服务端消息的异常。
+  Future<void> createDir(String dir) async {
+    await checkServer();
+    final String mkdirBaseUrl = httpBaseUrl;
+    final rsp = await httpClient.post(
+      storageHttpUri(['__dir', 'mkdir'], baseUrl: mkdirBaseUrl),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'dir': dir}),
+    );
+    if (rsp.statusCode != 200) {
+      throw Exception('create dir failed: [${rsp.statusCode}] ${rsp.body}');
+    }
+  }
+
   /// [destDir]：手动上传的目标子目录（相对于驱动根目录，已由
   /// 调用方归一化，如 "manual"）；为 null 时不发送 Image-Dest-Dir
   /// 头，走默认日期目录布局（自动同步路径）。三个子请求共用它。
-  Future<void> _uploadAssetEntity(AssetEntity asset, String? destDir) async {
+  /// [exact]：精确目录模式，见 [uploadAssetEntityToExactDir]。
+  Future<void> _uploadAssetEntity(AssetEntity asset, String? destDir,
+      {bool exact = false}) async {
     await checkServer();
     // 单次上传内快照 base URL：checkServer 可能在并发上传间重启 server
     // 并切换 httpBaseUrl，同一张照片的缩略图/原件/live 视频必须发往
@@ -198,6 +281,7 @@ class RemoteStorage implements RemoteStorageClient {
                   ? settingModel.encryptionPassword
                   : "",
               ...destDirHeaders(destDir),
+              ...exactDirHeaders(exact),
             },
           );
           stateModel.updateUploadProgress(
@@ -216,6 +300,7 @@ class RemoteStorage implements RemoteStorageClient {
             "POST", storageHttpUri([name], baseUrl: uploadBaseUrl));
         req.headers['Image-Date'] = dateStr;
         req.headers.addAll(destDirHeaders(destDir));
+        req.headers.addAll(exactDirHeaders(exact));
         req.headers['Image-Is-Live-Photo'] =
             asset.isLivePhoto ? "true" : "false";
         if (settingModel.enableEncrypt) {
@@ -250,6 +335,7 @@ class RemoteStorage implements RemoteStorageClient {
                   baseUrl: uploadBaseUrl));
           req.headers['Image-Date'] = dateStr;
           req.headers.addAll(destDirHeaders(destDir));
+          req.headers.addAll(exactDirHeaders(exact));
           req.headers['Image-Is-Live-Photo'] =
               asset.isLivePhoto ? "true" : "false";
           if (settingModel.enableEncrypt) {

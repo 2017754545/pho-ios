@@ -719,3 +719,80 @@ Go：见第十一节行为变化段。测试：U1–U8 的期望按“生产设�
 - Go 服务端未动，未跑 `go vet`/`go test`。
 - 未验证：真机页签切换、文件夹下钻、文件打开查看器、空态与
   未设存储提示、下拉刷新。
+
+## 十四、文件页签 v2：返回导航、服务端列目录、建文件夹、上传（2026-11-05）
+
+用户反馈 v1 三个缺口：只能下钻、没有返回上一级；没有手动创建
+文件夹；没有上传功能。本节全部补齐，数据源改为服务端列目录。
+
+- 返回导航：header 改为可点面包屑栏（根“文件”+ 各级段，点某段
+  直接跳到该级）+ 保留返回箭头 + 保留 PopScope 系统返回处理。
+  v1 header 没有 SafeArea，顶行在真机上会被状态栏/Dynamic Island
+  遮挡，返回箭头够不着——这是用户报“没有返回”的最可能原因
+  （无真机，无法直接证实）；v2 header 包在 SafeArea 内，并以
+  widget 测试覆盖下钻后面包屑与返回箭头均可见且能回上一级。
+- 服务端列目录：`server/api/http.go` 新增 POST `/__dir/list` 与
+  POST `/__dir/mkdir`（在下载/上传分支之前拦截，GET 返回 405），
+  请求体 `{"dir": "..."}`（相对于驱动根目录，`""` = 根）。
+  `imgmanager.ListDir`（单层 `StorageDrive.Range`，跳过
+  `.thumbnail`）与 `MkdirDir`（新 `StorageDrive.MkdirAll` 方法：
+  SMB/WebDAV 补实现，NFS 复用已有逐级建目录原语——原两参
+  `MkdirAll(path, perm)` 改名未导出 `mkdirAll`，调用处同步改名）。
+  路径校验用新 `SanitizeBrowseDir`（复用 `util.CleanDirPath` 的
+  遍历防护 + 拒首段 `.thumbnail`），与 `SanitizeDestDir` 的区别是
+  允许日期形状首段（日期文件夹必须能浏览、能建子目录、能作为
+  精确上传目标）；绝对路径、反斜杠、`..` 一律 400 且零次触及驱动。
+- 精确目录上传：新头 `Image-Dest-Exact: 1` + 新选项
+  `WithExactDestDir`，`genPath` 在 DestDir 已设 + 精确模式时只产
+  `<dest>/<name>`（Live Photo 的 `live_` 子目录规则不变，仍相对
+  于 dest；DestDir 为空时落在根目录）；默认仍为原有 video/image
+  类型分目录（云端手动上传不受影响）。Dart 新增
+  `uploadAssetEntityToExactDir`，三个子请求都带两个头。
+- Dart 客户端：`RemoteStorage.listDirEntries` / `createDir`（共享
+  `httpClient` + `storageHttpUri` + `checkServer`，POST JSON，
+  非 200 抛带服务端消息的异常）；`lib/storage/storage.dart` 现有
+  公开方法签名未动，只新增方法；不改 proto。
+- UI：`lib/files_body.dart` 重写数据源为服务端列表（切文件夹与
+  下拉刷新时刷新；文件夹在前、文件在后，均名降序，与 v1 相同）；
+  照片/视频条目按完整相对路径匹配 `AssetModel.remoteAssets` 取
+  缩略图与查看器（`GalleryViewerRoute useLocal:false`），非媒体条目
+  通用图标 + 大小，点击 snackbar 提示仅照片/视频可预览；
+  `remoteAssets` 为空时沿用 `_maybeLoad` 触发加载。header 加新建
+  文件夹动作（对话框 + 客户端单段校验，镜像服务端规则）与上传
+  动作（新 `lib/folder_upload_picker_route.dart`：本地照片多选网格
+  + 确认按钮，逐张经精确目录上传到当前文件夹，复用云端手动上传
+  的反馈：筛选/`syncedIDs` 跳过计数、每次失败 `uploadFailed`
+  snackbar、完成后 `RemoteRefreshEvent` + 刷新列表与远端列表）。
+  新文件 `lib/files_data_source.dart`（`FilesDataSource` 抽象 +
+  默认存储实现，供 widget 测试注入 fake）。`lib/files_tree.dart`
+  及其测试已删除（客户端拼树不再使用）。
+- l10n 新键 `emptyFolder` / `createFolder` / `createFolderTitle` /
+  `createFolderHint` / `createFolderInvalid` / `uploadToFolder` /
+  `previewNotSupported`（中英），`flutter gen-l10n` 已重新生成，
+  生成文件仅新增新键。`folder_upload_picker_route.dart` 的 1 处
+  `Colors.white`（缩略图视频播放角标）按既有 overlay 豁免理由
+  加入 `theme_consistency_test.dart` 白名单。
+- `README.md` / `README_EN.md`：文件页签 bullet 改为浏览 + 建
+  文件夹 + 上传，注明空文件夹经服务端列表可见。
+
+### 验证（2026-11-05，本地）
+
+- `flutter analyze`：0 error（98 issues，与基线持平，均为既有
+  info/warning）。
+- `flutter test`：**223 通过 / 0 失败**（基线 228 − 删除的
+  `files_tree_test.dart` 7 项 + 新增 2 项
+  `test/widget/files_body_test.dart`——下钻后面包屑/返回箭头可见
+  且能回上一级、面包屑段跳转到该级）。
+- `go vet ./imgmanager/ ./api/ ./drive/...`：干净；`gofmt` 干净。
+- `go test ./imgmanager/`：全过（含新增 `browse_test.go`：
+  `SanitizeBrowseDir` 接受/拒绝表、精确布局 genPath、ListDir/
+  MkdirDir 单层/`.thumbnail` 隐藏/非法零触及、精确模式校验分支）。
+- `go test ./api/` 单元测试：全过（含新增 `http_dir_test.go`：
+  列表单层、非法 400 零触及、405、建目录、畸形体、精确上传
+  六条路径）；5 个 Docker 集成 suite 与基线一致失败
+  （`git stash` 对照：无 Docker/测试服务端不可达，环境原因，
+  与本次改动无关）。`go test ./drive/...` 同样与基线一致
+  （9 项失败，均为测试 NFS/SMB 服务端不可达）。
+- 未验证：真机页签切换、面包屑/返回箭头实际可点性（无真机，
+  仅 widget 测试覆盖）、新建文件夹与上传的真机行为、服务端列
+  目录在 SMB/WebDAV/NFS 真实驱动上的行为（仅 fake 驱动测试）。

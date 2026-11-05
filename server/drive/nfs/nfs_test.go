@@ -238,7 +238,7 @@ func TestUploadNilReader(t *testing.T) {
 
 func TestMkdirAllEmptyRootPath(t *testing.T) {
 	d := &Nfs{}
-	err := d.MkdirAll("/some/dir", 0755)
+	err := d.mkdirAll("/some/dir", 0755)
 	if err == nil || !strings.Contains(err.Error(), "root path is empty") {
 		t.Errorf("MkdirAll with empty rootPath: expected 'root path is empty', got %v", err)
 	}

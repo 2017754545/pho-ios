@@ -26,6 +26,27 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get emptyFolder => 'This folder is empty';
+
+  @override
+  String get createFolder => 'New folder';
+
+  @override
+  String get createFolderTitle => 'Create folder';
+
+  @override
+  String get createFolderHint => 'Folder name';
+
+  @override
+  String get createFolderInvalid => 'Invalid folder name';
+
+  @override
+  String get uploadToFolder => 'Upload to this folder';
+
+  @override
+  String get previewNotSupported => 'Only photos and videos can be previewed';
+
+  @override
   String get sync => 'Sync';
 
   @override

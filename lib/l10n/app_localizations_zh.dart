@@ -26,6 +26,27 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
+  String get emptyFolder => '这个文件夹是空的';
+
+  @override
+  String get createFolder => '新建文件夹';
+
+  @override
+  String get createFolderTitle => '新建文件夹';
+
+  @override
+  String get createFolderHint => '文件夹名称';
+
+  @override
+  String get createFolderInvalid => '文件夹名称无效';
+
+  @override
+  String get uploadToFolder => '上传到这个文件夹';
+
+  @override
+  String get previewNotSupported => '只能预览照片和视频';
+
+  @override
   String get sync => '同步';
 
   @override

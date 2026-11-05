@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -23,17 +24,34 @@ const (
 	// "manual"），仅手动上传发送；自动同步不发送。服务端按
 	// SanitizeDestDir 校验，非法值返回 400，绝不静默回落到根目录。
 	HeaderDestDir = "Image-Dest-Dir"
-	maxUploadSize = 500 << 20 // 500MB
+	// HeaderDestExact：精确目录模式（"1"/"true"）。与 HeaderDestDir
+	// 联用时文件直接落在 DestDir 下，不再按类型分子目录（见
+	// imgmanager.WithExactDestDir）；DestDir 为空时落在根目录。
+	// 缺省或非法值按 false，即原有类型分目录行为。
+	HeaderDestExact = "Image-Dest-Exact"
+	maxUploadSize   = 500 << 20 // 500MB
 )
 
 // destDirFromHeader 读取并校验 Image-Dest-Dir 头：缺省返回 ""（自动
-// 同步布局）；非法值返回错误，调用方应以 400 拒绝该上传。
-func destDirFromHeader(r *http.Request) (string, error) {
+// 同步布局）；非法值返回错误，调用方应以 400 拒绝该上传。exact 为
+// true 时改用 SanitizeBrowseDir 校验（日期形状目录也可以是精确
+// 上传目标）。
+func destDirFromHeader(r *http.Request, exact bool) (string, error) {
 	raw := r.Header.Get(HeaderDestDir)
 	if raw == "" {
 		return "", nil
 	}
+	if exact {
+		return imgmanager.SanitizeBrowseDir(raw)
+	}
 	return imgmanager.SanitizeDestDir(raw)
+}
+
+// exactDestFromHeader 读取 Image-Dest-Exact 头：缺省或非法值按
+// false（原有类型分目录行为），与 IsLivePhoto 头的宽容解析一致。
+func exactDestFromHeader(r *http.Request) bool {
+	exact, _ := strconv.ParseBool(r.Header.Get(HeaderDestExact))
+	return exact
 }
 
 func getEncryptType(t string) imgmanager.EncryptType {
@@ -55,6 +73,23 @@ func (a *api) HttpHandler() http.Handler {
 }
 
 func (a *api) httpHandler(w http.ResponseWriter, r *http.Request) {
+	// 目录浏览端点在下载/上传分支之前拦截：GET 下载把路径当作文件
+	// 名，POST 上传把路径当作目标文件名，"/__dir/..." 若落入任一
+	// 分支都会被误解为文件操作。
+	switch r.URL.Path {
+	case "/__dir/list", "/__dir/mkdir":
+		if r.Method != http.MethodPost {
+			w.Header().Set("Allow", "POST")
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if r.URL.Path == "/__dir/list" {
+			a.httpDirList(w, r)
+		} else {
+			a.httpDirMkdir(w, r)
+		}
+		return
+	}
 	switch r.Method {
 	case http.MethodGet:
 		a.httpDownload(w, r)
@@ -112,7 +147,8 @@ func (a *api) httpUpload(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid path", http.StatusBadRequest)
 		return
 	}
-	destDir, err := destDirFromHeader(r)
+	exact := exactDestFromHeader(r)
+	destDir, err := destDirFromHeader(r, exact)
 	if err != nil {
 		http.Error(w, "invalid dest dir: "+err.Error(), http.StatusBadRequest)
 		return
@@ -121,7 +157,7 @@ func (a *api) httpUpload(w http.ResponseWriter, r *http.Request) {
 	err = a.im.Upload(r.Body, length, encodeName(dateTime, name), dateTime, imgmanager.WithEncrypt(imgmanager.EncryptOption{
 		Type:     enctype,
 		Password: encPassword,
-	}), imgmanager.IsLivePhoto(isLivePhoto), imgmanager.WithDestDir(destDir))
+	}), imgmanager.IsLivePhoto(isLivePhoto), imgmanager.WithDestDir(destDir), imgmanager.WithExactDestDir(exact))
 
 	if err != nil {
 		var maxBytesErr *http.MaxBytesError
@@ -176,7 +212,8 @@ func (a *api) httpUploadThumbnail(w http.ResponseWriter, r *http.Request) {
 	// 同一个有效日期同时用于文件名编码与存储目录：此前 genPath 在
 	// 内部把 1990 年前日期换成 Now，而文件名已按原日期编码，两者分叉。
 	dateTime = imgmanager.EffectiveFileDate(dateTime)
-	destDir, err := destDirFromHeader(r)
+	exact := exactDestFromHeader(r)
+	destDir, err := destDirFromHeader(r, exact)
 	if err != nil {
 		http.Error(w, "invalid dest dir: "+err.Error(), http.StatusBadRequest)
 		return
@@ -185,7 +222,7 @@ func (a *api) httpUploadThumbnail(w http.ResponseWriter, r *http.Request) {
 	err = a.im.UploadThumbnail(r.Body, length, encodeName(dateTime, name), dateTime, imgmanager.WithEncrypt(imgmanager.EncryptOption{
 		Type:     enctype,
 		Password: encPassword,
-	}), imgmanager.IsLivePhoto(isLivePhoto), imgmanager.WithDestDir(destDir))
+	}), imgmanager.IsLivePhoto(isLivePhoto), imgmanager.WithDestDir(destDir), imgmanager.WithExactDestDir(exact))
 	if err != nil {
 		var maxBytesErr *http.MaxBytesError
 		if errors.As(err, &maxBytesErr) {
@@ -236,7 +273,8 @@ func (a *api) httpUploadLiveVideo(w http.ResponseWriter, r *http.Request) {
 	dateTime = imgmanager.EffectiveFileDate(dateTime)
 	// Live 视频强制 image + live_ 布局（见 genPath）：伴生视频必须与
 	// 照片同目录，IsLivePhoto(true) 保证类型目录取 image 而非 video。
-	destDir, err := destDirFromHeader(r)
+	exact := exactDestFromHeader(r)
+	destDir, err := destDirFromHeader(r, exact)
 	if err != nil {
 		http.Error(w, "invalid dest dir: "+err.Error(), http.StatusBadRequest)
 		return
@@ -245,7 +283,7 @@ func (a *api) httpUploadLiveVideo(w http.ResponseWriter, r *http.Request) {
 	err = a.im.UploadLiveVideo(r.Body, length, encodeName(dateTime, name), dateTime, imgmanager.WithEncrypt(imgmanager.EncryptOption{
 		Type:     enctype,
 		Password: encPassword,
-	}), imgmanager.IsLivePhoto(true), imgmanager.WithDestDir(destDir))
+	}), imgmanager.IsLivePhoto(true), imgmanager.WithDestDir(destDir), imgmanager.WithExactDestDir(exact))
 	if err != nil {
 		var maxBytesErr *http.MaxBytesError
 		if errors.As(err, &maxBytesErr) {
@@ -258,6 +296,78 @@ func (a *api) httpUploadLiveVideo(w http.ResponseWriter, r *http.Request) {
 	}
 	r.Body.Close()
 	w.WriteHeader(http.StatusOK)
+}
+
+// dirRequest 是 /__dir/list 与 /__dir/mkdir 的请求体：dir 相对
+// 于驱动根目录，"" 表示根目录。
+type dirRequest struct {
+	Dir string `json:"dir"`
+}
+
+// dirEntry 是 /__dir/list 的响应条目：单层直接子项，排序由客户端负责。
+type dirEntry struct {
+	Name    string    `json:"name"`
+	IsDir   bool      `json:"is_dir"`
+	Size    int64     `json:"size"`
+	ModTime time.Time `json:"mod_time"`
+}
+
+type dirListResponse struct {
+	Entries []dirEntry `json:"entries"`
+}
+
+// httpDirList 处理 POST /__dir/list：返回 dir 的单层条目。
+// 目录不存在、驱动未配置、dir 非法时返回 400 与错误消息。
+func (a *api) httpDirList(w http.ResponseWriter, r *http.Request) {
+	var req dirRequest
+	if err := decodeDirRequest(w, r, &req); err != nil {
+		return
+	}
+	entries, err := a.im.ListDir(req.Dir)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	resp := dirListResponse{Entries: make([]dirEntry, 0, len(entries))}
+	for _, e := range entries {
+		resp.Entries = append(resp.Entries, dirEntry{
+			Name:    e.Name,
+			IsDir:   e.IsDir,
+			Size:    e.Size,
+			ModTime: e.ModTime,
+		})
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		log.Printf("encode dir list response failed: %v", err)
+	}
+}
+
+// httpDirMkdir 处理 POST /__dir/mkdir：创建 dir 及其父目录。
+// dir 非法时返回 400 且驱动一次都不会被调用。
+func (a *api) httpDirMkdir(w http.ResponseWriter, r *http.Request) {
+	var req dirRequest
+	if err := decodeDirRequest(w, r, &req); err != nil {
+		return
+	}
+	if err := a.im.MkdirDir(req.Dir); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte(`{"ok":true}`))
+}
+
+// decodeDirRequest 读 /__dir/* 的 JSON 请求体（限 64KiB）：
+// 读/解析失败时写 400 并返回错误，调用方直接返回。
+func decodeDirRequest(w http.ResponseWriter, r *http.Request, req *dirRequest) error {
+	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
+	defer r.Body.Close()
+	if err := json.NewDecoder(r.Body).Decode(req); err != nil {
+		http.Error(w, "invalid request body: "+err.Error(), http.StatusBadRequest)
+		return err
+	}
+	return nil
 }
 
 type downloadType int

@@ -80,6 +80,9 @@ void main() {
         'files_body.dart',          // 仅 1 处 Colors.white：缩略图上的视频播放图标，
                                     // 须恒为白色以保证在任意照片上可读（同 gallery_body
                                     // 的 overlay 豁免理由）
+        'folder_upload_picker_route.dart', // 仅 1 处 Colors.white：缩略图上的视频播放图标，
+                                    // 须恒为白色以保证在任意照片上可读（同 gallery_body
+                                    // 的 overlay 豁免理由）
       };
 
       final pattern = RegExp(r'Colors\.(black|white|grey|orange|green|red|blue)\b');

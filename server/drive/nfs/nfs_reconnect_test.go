@@ -297,13 +297,13 @@ func TestNfsMkdirAllIgnoresExist(t *testing.T) {
 	}
 
 	// 第一次 MkdirAll: 创建 a + b (a 已存在应被忽略)
-	err = d.MkdirAll(dirA+"/b", 0755)
+	err = d.mkdirAll(dirA+"/b", 0755)
 	if err != nil {
 		t.Fatalf("MkdirAll(a/b) 第一次: %v", err)
 	}
 
 	// 第二次 MkdirAll: a/b 已存在, 全部目录都应被忽略
-	err = d.MkdirAll(dirA+"/b", 0755)
+	err = d.mkdirAll(dirA+"/b", 0755)
 	if err != nil {
 		t.Fatalf("MkdirAll(a/b) 第二次（目录已存在）: %v", err)
 	}

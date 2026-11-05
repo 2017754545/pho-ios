@@ -532,6 +532,30 @@ func (s *Smb) Range(dir string, deal func(fs.FileInfo) bool) error {
 	return nil
 }
 
+// MkdirAll 实现 StorageDrive.MkdirAll：dir 相对于驱动根目录，
+// 已存在时成功。复用 smb2.Share 的 MkdirAll（Upload 建父目录
+// 用的同一原语）。
+func (s *Smb) MkdirAll(dir string) error {
+	if err := s.checkConn(); err != nil {
+		return err
+	}
+	rootPath := s.getRootPath()
+	if rootPath == "" {
+		return fmt.Errorf("root path is empty")
+	}
+	fs := s.acquireFS()
+	if fs == nil {
+		return fmt.Errorf("smb share is not connected")
+	}
+	defer s.releaseFS()
+	if err := fs.MkdirAll(filepath.Join(rootPath, dir), 0755); err != nil {
+		s.cleanLastConnTime()
+		return err
+	}
+	s.updateLastConnTime()
+	return nil
+}
+
 type desc []fs.FileInfo
 
 func (d desc) Len() int      { return len(d) }

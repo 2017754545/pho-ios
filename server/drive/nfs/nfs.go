@@ -415,7 +415,7 @@ func (d *Nfs) Upload(path string, reader io.ReadCloser, size int64, lastModified
 	}
 	defer d.releaseConn()
 	fullPath := filepath.Join(rootPath, path)
-	err := d.MkdirAll(filepath.Dir(fullPath), 0755)
+	err := d.mkdirAll(filepath.Dir(fullPath), 0755)
 	if err != nil {
 		d.cleanLastConnTime()
 		return fmt.Errorf("mkdir %s error: %v", filepath.Dir(fullPath), err)
@@ -479,6 +479,25 @@ func (d *Nfs) Range(dir string, deal func(fs.FileInfo) bool) error {
 	return nil
 }
 
+// MkdirAll 实现 StorageDrive.MkdirAll：dir 相对于驱动根目录，
+// 已存在时成功。复用 mkdirAll 按段逐级建目录（Upload 建父目录
+// 用的同一原语）。
+func (d *Nfs) MkdirAll(dir string) error {
+	if err := d.checkConn(); err != nil {
+		return err
+	}
+	rootPath := d.getRootPath()
+	if rootPath == "" {
+		return fmt.Errorf("root path is empty")
+	}
+	if err := d.mkdirAll(filepath.Join(rootPath, dir), 0755); err != nil {
+		d.cleanLastConnTime()
+		return err
+	}
+	d.updateLastConnTime()
+	return nil
+}
+
 type desc []*nfs.EntryPlus
 
 func (d desc) Len() int      { return len(d) }
@@ -487,8 +506,8 @@ func (d desc) Less(i, j int) bool {
 	return d[i].ModTime().After(d[j].ModTime())
 }
 
-// MkdirAll makes a directory path and all parents that does not exist by d.cli.Mkdir.
-func (d *Nfs) MkdirAll(path string, perm fs.FileMode) error {
+// mkdirAll makes a directory path and all parents that does not exist by d.cli.Mkdir.
+func (d *Nfs) mkdirAll(path string, perm fs.FileMode) error {
 	if d.getRootPath() == "" {
 		return fmt.Errorf("root path is empty")
 	}

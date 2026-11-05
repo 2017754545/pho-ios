@@ -18,6 +18,10 @@ type StorageDrive interface {
 	DownloadWithOffset(path string, offset int64) (io.ReadCloser, int64, error)
 	Delete(path string) error
 	Range(dir string, deal func(fs.FileInfo) bool) error
+	// MkdirAll 创建 dir（相对于驱动根目录，"" 或 "." 表示根目录，已
+	// 存在时成功）及其全部不存在的父目录。ListDir/MkdirDir 浏览端点
+	// 用它创建用户在“文件”页签新建的文件夹。
+	MkdirAll(dir string) error
 	Close() error
 }
 
@@ -62,6 +66,10 @@ func (d *UnimplementedDrive) Delete(path string) error {
 }
 
 func (d *UnimplementedDrive) Range(dir string, deal func(fs.FileInfo) bool) error {
+	return errors.New("no available drive")
+}
+
+func (d *UnimplementedDrive) MkdirAll(dir string) error {
 	return errors.New("no available drive")
 }
 

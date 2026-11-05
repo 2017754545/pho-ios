@@ -161,6 +161,12 @@ type Options struct {
 	// 返回错误，绝不静默回落到根目录（否则手动上传会与自动同步
 	// 混进同一个文件夹）。
 	DestDir string
+	// ExactDestDir 仅与 DestDir 联用：为 true 时 genPath 不再按
+	// 类型分子目录（video/image），文件直接落在 DestDir 下（DestDir
+	// 为空时落在根目录）。“文件”页签上传到当前文件夹用此模式；
+	// Live Photo 的 live_<base>/ 子目录规则不变，仍相对于 DestDir。
+	// 默认 false，保持手动上传原有的类型分目录行为。
+	ExactDestDir bool
 }
 
 // EncryptType 和常量已迁移至 encrypt.go
@@ -189,6 +195,15 @@ func IsLivePhoto(isLivePhoto bool) OptionFunc {
 func WithDestDir(destDir string) OptionFunc {
 	return func(o *Options) {
 		o.DestDir = destDir
+	}
+}
+
+// WithExactDestDir 设置精确目录模式（见 Options.ExactDestDir）：
+// 文件直接落在 DestDir 下，不再按类型分子目录。DestDir 的校验
+// 改用 SanitizeBrowseDir（日期形状目录也可以是上传目标）。
+func WithExactDestDir(exact bool) OptionFunc {
+	return func(o *Options) {
+		o.ExactDestDir = exact
 	}
 }
 
@@ -232,6 +247,37 @@ func SanitizeDestDir(raw string) (string, error) {
 	return strings.Join(parts, "/"), nil
 }
 
+// SanitizeBrowseDir 校验并规范化一个浏览路径（目录列表/建目录端点
+// 的 dir 参数，以及精确目录模式上传的 DestDir）：相对于驱动根目录
+// 的相对路径，用 `/` 分隔，返回规范形式；空字符串表示根目录。
+//
+// 与 SanitizeDestDir 不同：首段为日期目录形状（4 位或 8 位纯数字）
+// 是合法的——日期文件夹必须能浏览、能建子目录、能作为精确上传
+// 目标；SanitizeDestDir 拒绝日期形状是为了防止手动上传目录与自动
+// 同步的日期遍历重复访问，那条理由不适用于浏览路径。首段为
+// `.thumbnail` 仍拒绝（缩略图镜像目录不可浏览/不可写入）。
+// 拒绝：反斜杠、绝对路径（以 `/` 开头）、任何 `..` 元素、首段
+// `.thumbnail`。遍历防护复用 util.CleanDirPath（拒绝反斜杠与
+// `..` 元素，保留 "." / "/" 根拼写）；这里再把 "." 根拼写归一
+// 为空字符串。
+func SanitizeBrowseDir(raw string) (string, error) {
+	if strings.HasPrefix(raw, "/") {
+		return "", fmt.Errorf("absolute dir not allowed: %s", raw)
+	}
+	cleaned, err := util.CleanDirPath(raw)
+	if err != nil {
+		return "", err
+	}
+	if cleaned == "." {
+		return "", nil
+	}
+	parts := strings.Split(cleaned, "/")
+	if parts[0] == ".thumbnail" {
+		return "", fmt.Errorf("reserved dir name: %s", raw)
+	}
+	return cleaned, nil
+}
+
 // isDateDirShape 报告名字是否为日期目录形状：4 位或 8 位纯数字，
 // 与 RangeByDate 的年目录（4 位）/ YYYYMMDD 目录（8 位）相同。
 func isDateDirShape(name string) bool {
@@ -262,7 +308,7 @@ func EffectiveFileDate(date time.Time) time.Time {
 	return date
 }
 
-// genPath 构造存储路径。两种布局：
+// genPath 构造存储路径。三种布局：
 //   - 默认（DestDir 为空）：{日期目录}/{文件名}，日期目录由 dirType
 //     决定（YYYY/MM/DD 或 YYYYMMDD），与历史行为一致。
 //   - 手动上传（DestDir 非空）：{dest}/{video|image}/{文件名}，不按
@@ -271,16 +317,23 @@ func EffectiveFileDate(date time.Time) time.Time {
 //     image 目录，与照片同在 live_<base>/ 子目录内——
 //     GetLiveVideoOffset 按照片所在目录查找伴生视频，视频必须与
 //     照片相邻，绝不能进 video/ 目录。fixPath（.aes 后缀）行为不变。
+//   - 精确模式（ExactDestDir）：{dest}/{文件名}，不按类型分子目录；
+//     DestDir 为空时直接落在根目录。Live Photo 的 live_<base>/
+//     子目录规则不变，仍相对于 DestDir。
 func (im *ImgManager) genPath(name string, date time.Time, options Options) string {
 	date = EffectiveFileDate(date)
 	elems := []string{}
 	if options.DestDir != "" {
 		elems = append(elems, options.DestDir)
-		if options.IsLivePhoto || !util.IsVideo(name) {
-			elems = append(elems, "image")
-		} else {
-			elems = append(elems, "video")
+		if !options.ExactDestDir {
+			if options.IsLivePhoto || !util.IsVideo(name) {
+				elems = append(elems, "image")
+			} else {
+				elems = append(elems, "video")
+			}
 		}
+	} else if options.ExactDestDir {
+		// 精确模式 + 空 DestDir：文件直接落在根目录下，不加任何前缀。
 	} else {
 		im.dirTypeMu.RLock()
 		dirType := im.dirType
@@ -311,6 +364,15 @@ func (im *ImgManager) genPath(name string, date time.Time, options Options) stri
 // （直接调用 Upload 的调用方同样受约束）。
 func validateDestDir(options *Options) error {
 	if options.DestDir == "" {
+		return nil
+	}
+	if options.ExactDestDir {
+		// 精确模式：DestDir 是用户当前所在的文件夹，日期形状合法。
+		sanitized, err := SanitizeBrowseDir(options.DestDir)
+		if err != nil {
+			return fmt.Errorf("invalid dest dir: %w", err)
+		}
+		options.DestDir = sanitized
 		return nil
 	}
 	sanitized, err := SanitizeDestDir(options.DestDir)
@@ -1123,6 +1185,66 @@ func (im *ImgManager) walkAlbumDir(d StorageDrive, dir string, depth int, f func
 		return false, walkErr
 	}
 	return goOn, nil
+}
+
+// DirEntry 是 ListDir 返回的单层目录条目：只含驱动 Range 直接
+// 返回的 FileInfo 字段，不做递归、不读文件内容。
+type DirEntry struct {
+	Name    string
+	IsDir   bool
+	Size    int64
+	ModTime time.Time
+}
+
+// ListDir 列出 dir（相对于驱动根目录，"" 表示根目录）的直接子项，
+// 单层，不递归；跳过 ".thumbnail" 条目（缩略图镜像目录不出现在
+// 文件浏览里）。dir 先经 SanitizeBrowseDir 校验，非法值直接报错，
+// 驱动 Range 一次都不会调到。排序由调用方（客户端）负责。
+func (im *ImgManager) ListDir(dir string) ([]DirEntry, error) {
+	sanitized, err := SanitizeBrowseDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	rangeDir := sanitized
+	if rangeDir == "" {
+		rangeDir = "."
+	}
+	d, unlock := im.drive()
+	defer unlock()
+	infos, err := im.listDir(d, rangeDir)
+	if err != nil {
+		return nil, err
+	}
+	entries := make([]DirEntry, 0, len(infos))
+	for _, info := range infos {
+		if info.Name() == ".thumbnail" {
+			continue
+		}
+		entries = append(entries, DirEntry{
+			Name:    info.Name(),
+			IsDir:   info.IsDir(),
+			Size:    info.Size(),
+			ModTime: info.ModTime(),
+		})
+	}
+	return entries, nil
+}
+
+// MkdirDir 创建 dir（相对于驱动根目录）及其全部不存在的父目录。
+// dir 为 "" 时表示根目录，已存在，直接成功。dir 先经
+// SanitizeBrowseDir 校验，非法值直接报错，驱动 MkdirAll 一次都
+// 不会调到。
+func (im *ImgManager) MkdirDir(dir string) error {
+	sanitized, err := SanitizeBrowseDir(dir)
+	if err != nil {
+		return err
+	}
+	if sanitized == "" {
+		return nil
+	}
+	d, unlock := im.drive()
+	defer unlock()
+	return d.MkdirAll(sanitized)
 }
 
 func (im *ImgManager) listDir(d StorageDrive, path string) ([]fs.FileInfo, error) {

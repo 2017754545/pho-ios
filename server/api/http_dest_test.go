@@ -13,9 +13,14 @@ import (
 )
 
 // recordingDrive 记录 Upload 收到路径的 StorageDrive，用于验证
-// Image-Dest-Dir 头是否落到存储路径上。
+// Image-Dest-Dir 头是否落到存储路径上；同时记录 Range/MkdirAll
+// 调用，供目录浏览端点测试断言“非法 dir 零次触及驱动”。
 type recordingDrive struct {
-	paths []string
+	paths        []string
+	mkdirDirs    []string
+	rangeDirs    []string
+	rangeEntries map[string][]fs.FileInfo
+	rangeErr     error
 }
 
 func (d *recordingDrive) Upload(path string, content io.ReadCloser, size int64, modTime time.Time) error {
@@ -32,6 +37,19 @@ func (d *recordingDrive) DownloadWithOffset(path string, offset int64) (io.ReadC
 }
 func (d *recordingDrive) Delete(path string) error { return nil }
 func (d *recordingDrive) Range(dir string, deal func(fs.FileInfo) bool) error {
+	d.rangeDirs = append(d.rangeDirs, dir)
+	if d.rangeErr != nil {
+		return d.rangeErr
+	}
+	for _, info := range d.rangeEntries[dir] {
+		if !deal(info) {
+			break
+		}
+	}
+	return nil
+}
+func (d *recordingDrive) MkdirAll(dir string) error {
+	d.mkdirDirs = append(d.mkdirDirs, dir)
 	return nil
 }
 func (d *recordingDrive) Close() error { return nil }

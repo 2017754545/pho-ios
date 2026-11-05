@@ -41,7 +41,8 @@ func (m *mockDrive) Delete(path string) error { return m.deleteErr }
 func (m *mockDrive) Range(dir string, deal func(fs.FileInfo) bool) error {
 	return m.rangeErr
 }
-func (m *mockDrive) Close() error { return nil }
+func (m *mockDrive) MkdirAll(dir string) error { return nil }
+func (m *mockDrive) Close() error              { return nil }
 
 func newTestAPI() *api {
 	im := imgmanager.NewImgManager(imgmanager.Option{WorkerNum: 1})

@@ -156,6 +156,10 @@ func (m *mockDrive) Close() error {
 	return nil
 }
 
+func (m *mockDrive) MkdirAll(dir string) error {
+	return nil
+}
+
 // memFileInfo 实现 fs.FileInfo 接口，供 mockDrive.Range 使用。
 type memFileInfo struct {
 	name    string
